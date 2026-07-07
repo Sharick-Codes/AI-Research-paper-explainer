@@ -1,0 +1,6 @@
+{
+  "name": "AI Research Paper Explainer",
+  "description": "Upload research papers (PDF) and understand them in simple terms using Google Gemini AI, featuring interactive chats, summaries, quizzes, and presentation outline generation.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

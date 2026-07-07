@@ -1,0 +1,89 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "User preferences, stats, and profile details.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "paperCount": { "type": "integer" },
+        "aiUsageCount": { "type": "integer" },
+        "theme": { "type": "string", "enum": ["light", "dark"] },
+        "language": { "type": "string" },
+        "notificationsEnabled": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "email"]
+    },
+    "Paper": {
+      "title": "Research Paper",
+      "description": "Information about an uploaded research paper, including metadata and AI-generated explanations.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "authors": { "type": "string" },
+        "keywords": { "type": "string" },
+        "topic": { "type": "string" },
+        "uploadDate": { "type": "string", "format": "date-time" },
+        "extractedText": { "type": "string" },
+        "isSaved": { "type": "boolean" },
+        "readingProgress": { "type": "integer" },
+        "citations": { "type": "object" },
+        "summary": { "type": "string" },
+        "sectionExplanations": { "type": "string" },
+        "abstractEx": { "type": "string" },
+        "introEx": { "type": "string" },
+        "litReview": { "type": "string" },
+        "methodology": { "type": "string" },
+        "algorithm": { "type": "string" },
+        "dataset": { "type": "string" },
+        "results": { "type": "string" },
+        "conclusion": { "type": "string" },
+        "futureScope": { "type": "string" },
+        "researchGap": { "type": "string" },
+        "dictionary": { "type": "string" },
+        "formula": { "type": "string" },
+        "flowchart": { "type": "string" },
+        "implementation": { "type": "string" },
+        "viva": { "type": "string" },
+        "quiz": { "type": "string" },
+        "ppt": { "type": "string" },
+        "takeaways": { "type": "string" },
+        "diagrams": { "type": "string" },
+        "notes": { "type": "string" }
+      },
+      "required": ["id", "userId", "title"]
+    },
+    "ChatMessage": {
+      "title": "Chat Message",
+      "description": "A single interaction in the paper AI chat assistant.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "role": { "type": "string", "enum": ["user", "assistant"] },
+        "content": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "role", "content", "timestamp"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User configuration, statistics and preferences."
+    },
+    "/users/{userId}/papers/{paperId}": {
+      "schema": "Paper",
+      "description": "Uploaded paper metadata and parsed contents along with AI explanations."
+    },
+    "/users/{userId}/papers/{paperId}/chat": {
+      "schema": "ChatMessage",
+      "description": "Interactive chat history associated with this paper."
+    }
+  }
+}
