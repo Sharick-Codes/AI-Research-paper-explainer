@@ -116,8 +116,22 @@ export default function PaperDetails({ paper, onBack, onRefreshPapers }: PaperDe
       });
 
       if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.error || 'Failed to analyze paper.');
+        let errorMessage = 'Failed to analyze paper.';
+        const contentType = res.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const errData = await res.json();
+          errorMessage = errData.error || errorMessage;
+        } else {
+          const text = await res.text();
+          errorMessage = `Server Error (${res.status}): ${text.slice(0, 150)}`;
+        }
+        throw new Error(errorMessage);
+      }
+
+      const contentType = res.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await res.text();
+        throw new Error(`Invalid response format from server (${res.status}): ${text.slice(0, 150)}`);
       }
 
       const data = await res.json();

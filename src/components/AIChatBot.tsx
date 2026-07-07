@@ -142,8 +142,22 @@ export default function AIChatBot({ activePaper }: AIChatBotProps) {
       });
 
       if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.error || 'Server returned an error.');
+        let errorMessage = 'Server returned an error.';
+        const contentType = res.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const errData = await res.json();
+          errorMessage = errData.error || errorMessage;
+        } else {
+          const text = await res.text();
+          errorMessage = `Server Error (${res.status}): ${text.slice(0, 150)}`;
+        }
+        throw new Error(errorMessage);
+      }
+
+      const contentType = res.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        const text = await res.text();
+        throw new Error(`Invalid response format from server (${res.status}): ${text.slice(0, 150)}`);
       }
 
       const data = await res.json();
