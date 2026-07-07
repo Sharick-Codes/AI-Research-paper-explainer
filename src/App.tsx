@@ -51,7 +51,7 @@ export default function App() {
   const [papers, setPapers] = useState<Paper[]>([]);
   
   // App navigation state
-  const [view, setView] = useState<'landing' | 'auth_login' | 'auth_register' | 'workspace'>('landing');
+  const [view, setView] = useState<'landing' | 'auth_login' | 'auth_register' | 'workspace'>('workspace');
   const [currentTab, setTab] = useState<string>('dashboard');
   const [activePaper, setActivePaper] = useState<Paper | null>(null);
   
@@ -73,24 +73,18 @@ export default function App() {
     }
   }, [darkMode]);
 
-  // Listen to Firebase Auth state
+  // Initialize free/guest user session immediately
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
+    const initSession = async () => {
+      const user = auth.currentUser;
       setCurrentUser(user);
       setLoadingAuth(false);
-      
+      setView('workspace');
       if (user) {
-        setView('workspace');
         await fetchUserData(user);
-      } else {
-        setView('landing');
-        setUserProfile(null);
-        setPapers([]);
-        setActivePaper(null);
       }
-    });
-
-    return () => unsubscribe();
+    };
+    initSession();
   }, []);
 
   const fetchUserData = async (user: User) => {
@@ -185,11 +179,10 @@ export default function App() {
     }
   };
 
-  const handleLogout = async () => {
-    try {
-      await signOut(auth);
-    } catch (err) {
-      console.error("Sign out error:", err);
+  const handleLogout = () => {
+    if (confirm("Resetting your workspace will delete all your guest progress, uploaded research papers, and AI chat history. Are you sure you want to proceed and start a fresh free session?")) {
+      localStorage.removeItem('guest_user_id');
+      window.location.reload();
     }
   };
 
