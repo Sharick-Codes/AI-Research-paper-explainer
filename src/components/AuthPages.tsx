@@ -101,6 +101,8 @@ export default function AuthPages({ initialView = 'login', onSuccess, onBackToHo
         setError('Google sign-in was cancelled or interrupted. Please try again or use standard Email and Password login.');
       } else if (err.code === 'auth/popup-blocked') {
         setError('Pop-up windows are blocked by your browser. Please enable pop-ups, open the app in a new window/tab, or sign in with Email and Password instead.');
+      } else if (err.code === 'auth/operation-not-allowed') {
+        setError('Google Sign-In is not enabled in your Firebase Console. To enable Google Sign-In:\n1. Go to your Firebase Console.\n2. Navigate to Build > Authentication > Sign-in method.\n3. Click "Add new provider", select "Google", enable it, configure project details/email, and save.\nIn the meantime, you can sign in using standard Email and Password instead.');
       } else {
         setError((err.message || 'Failed to authenticate with Google.') + ' Consider signing in with standard Email and Password instead.');
       }
@@ -153,6 +155,8 @@ export default function AuthPages({ initialView = 'login', onSuccess, onBackToHo
         setError('Invalid email or password.');
       } else if (err.code === 'auth/email-already-in-use') {
         setError('An account with this email already exists.');
+      } else if (err.code === 'auth/operation-not-allowed') {
+        setError('Email/Password login is not enabled in your Firebase Console. To enable it:\n1. Go to your Firebase Console.\n2. Navigate to Build > Authentication > Sign-in method.\n3. Click "Add new provider" and select "Email/Password" -> click Enable and Save.\nIn the meantime, you can sign in instantly using your Google Account below!');
       } else {
         setError(err.message || 'An authentication error occurred.');
       }
@@ -171,7 +175,11 @@ export default function AuthPages({ initialView = 'login', onSuccess, onBackToHo
       setEmail('');
     } catch (err: any) {
       console.error(err);
-      setError(err.message || 'Failed to send password reset email.');
+      if (err.code === 'auth/operation-not-allowed') {
+        setError('Email/Password provider is not enabled in your Firebase Console. Please enable "Email/Password" in your Firebase project (under Authentication > Sign-in method) to use password recovery.');
+      } else {
+        setError(err.message || 'Failed to send password reset email.');
+      }
     } finally {
       setLoading(false);
     }
@@ -210,8 +218,8 @@ export default function AuthPages({ initialView = 'login', onSuccess, onBackToHo
           className="bg-slate-900 border border-slate-800 rounded-3xl p-8 shadow-2xl"
         >
           {error && (
-            <div className="flex items-center space-x-3 p-4 bg-rose-500/10 border border-rose-500/20 rounded-2xl text-rose-200 text-sm mb-6">
-              <AlertCircle className="h-5 w-5 text-rose-400 flex-shrink-0" />
+            <div className="flex items-start space-x-3 p-4 bg-rose-500/10 border border-rose-500/20 rounded-2xl text-rose-200 text-sm mb-6 whitespace-pre-line leading-relaxed">
+              <AlertCircle className="h-5 w-5 text-rose-400 flex-shrink-0 mt-0.5" />
               <span>{error}</span>
             </div>
           )}
