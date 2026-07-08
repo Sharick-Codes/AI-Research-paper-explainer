@@ -89,13 +89,14 @@ export default function App() {
 
   const fetchUserData = async (user: User) => {
     setLoadingData(true);
+    let profile: UserProfile | null = null;
+    let loadedPapers: Paper[] = [];
+
     try {
       // 1. Fetch user profile from Firestore
       const userDocRef = doc(db, 'users', user.uid);
       const userDocSnap = await getDoc(userDocRef);
       
-      let profile: UserProfile;
-
       if (!userDocSnap.exists()) {
         // Create a default profile on first login
         profile = {
@@ -110,36 +111,72 @@ export default function App() {
           notificationsEnabled: true,
           createdAt: new Date().toISOString()
         };
-        await setDoc(userDocRef, profile);
+        try {
+          await setDoc(userDocRef, profile);
+        } catch (setDocErr) {
+          console.warn("Could not save default profile to Firestore:", setDocErr);
+        }
       } else {
         profile = userDocSnap.data() as UserProfile;
       }
-      
+    } catch (err) {
+      console.warn("Error fetching user profile from Firestore, attempting fallback to local cache:", err);
+      const cachedProfileStr = localStorage.getItem(`profile_${user.uid}`);
+      if (cachedProfileStr) {
+        try {
+          profile = JSON.parse(cachedProfileStr);
+        } catch (_) {}
+      }
+      if (!profile) {
+        profile = {
+          userId: user.uid,
+          name: user.displayName || user.email?.split('@')[0] || 'Scholar (Offline)',
+          email: user.email || '',
+          photoURL: user.photoURL || '',
+          paperCount: 0,
+          aiUsageCount: 0,
+          theme: 'light',
+          language: 'English',
+          notificationsEnabled: true,
+          createdAt: new Date().toISOString()
+        };
+      }
+    }
+
+    if (profile) {
       setUserProfile(profile);
       setDarkMode(profile.theme === 'dark');
+      localStorage.setItem(`profile_${user.uid}`, JSON.stringify(profile));
+    }
 
+    try {
       // 2. Fetch user's papers collection
       const papersCollectionRef = collection(db, 'users', user.uid, 'papers');
       const papersSnapshot = await getDocs(papersCollectionRef);
       
-      const loadedPapers: Paper[] = [];
       papersSnapshot.forEach((doc) => {
         loadedPapers.push(doc.data() as Paper);
       });
-      
       setPapers(loadedPapers);
-      
-      // If there is an active paper selected, keep its context synced
-      if (activePaper) {
-        const synced = loadedPapers.find(p => p.id === activePaper.id);
-        if (synced) setActivePaper(synced);
-      }
-
+      localStorage.setItem(`papers_${user.uid}`, JSON.stringify(loadedPapers));
     } catch (err) {
-      console.error("Error fetching user data:", err);
-    } finally {
-      setLoadingData(false);
+      console.warn("Error fetching user papers from Firestore, attempting fallback to local cache:", err);
+      const cachedPapersStr = localStorage.getItem(`papers_${user.uid}`);
+      if (cachedPapersStr) {
+        try {
+          loadedPapers = JSON.parse(cachedPapersStr);
+          setPapers(loadedPapers);
+        } catch (_) {}
+      }
     }
+    
+    // If there is an active paper selected, keep its context synced
+    if (activePaper) {
+      const synced = loadedPapers.find(p => p.id === activePaper.id);
+      if (synced) setActivePaper(synced);
+    }
+
+    setLoadingData(false);
   };
 
   const handleRefreshPapers = async () => {
@@ -152,6 +189,7 @@ export default function App() {
         loadedPapers.push(doc.data() as Paper);
       });
       setPapers(loadedPapers);
+      localStorage.setItem(`papers_${currentUser.uid}`, JSON.stringify(loadedPapers));
       
       if (activePaper) {
         const synced = loadedPapers.find(p => p.id === activePaper.id);
@@ -160,22 +198,36 @@ export default function App() {
         }
       }
     } catch (err) {
-      console.error("Failed to refresh papers:", err);
+      console.warn("Failed to refresh papers from Firestore, attempting fallback to local cache:", err);
+      const cachedPapersStr = localStorage.getItem(`papers_${currentUser.uid}`);
+      if (cachedPapersStr) {
+        try {
+          const loadedPapers = JSON.parse(cachedPapersStr);
+          setPapers(loadedPapers);
+          if (activePaper) {
+            const synced = loadedPapers.find((p: Paper) => p.id === activePaper.id);
+            if (synced) {
+              setActivePaper(synced);
+            }
+          }
+        } catch (_) {}
+      }
     }
   };
 
   const handleUpdateUserProfile = async (updates: Partial<UserProfile>) => {
     if (!currentUser || !userProfile) return;
+    const updatedProfile = { ...userProfile, ...updates };
+    setUserProfile(updatedProfile);
+    localStorage.setItem(`profile_${currentUser.uid}`, JSON.stringify(updatedProfile));
+    if (updates.theme !== undefined) {
+      setDarkMode(updates.theme === 'dark');
+    }
     try {
       const userDocRef = doc(db, 'users', currentUser.uid);
-      const updatedProfile = { ...userProfile, ...updates };
       await updateDoc(userDocRef, updates);
-      setUserProfile(updatedProfile);
-      if (updates.theme !== undefined) {
-        setDarkMode(updates.theme === 'dark');
-      }
     } catch (err) {
-      console.error("Failed to update user profile:", err);
+      console.warn("Failed to update user profile in Firestore (will persist locally):", err);
     }
   };
 

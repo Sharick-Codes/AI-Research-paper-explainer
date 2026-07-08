@@ -74,9 +74,25 @@ export default function AIChatBot({ activePaper }: AIChatBotProps) {
           setMessages([initialMsg]);
         } else {
           setMessages(loadedMessages);
+          localStorage.setItem(`chat_${user.uid}_${activePaper.id}`, JSON.stringify(loadedMessages));
         }
       } catch (err) {
-        console.error("Failed to load chat history:", err);
+        console.warn("Failed to load chat history from Firestore, falling back to local cache:", err);
+        const cachedChatStr = localStorage.getItem(`chat_${user.uid}_${activePaper.id}`);
+        if (cachedChatStr) {
+          try {
+            setMessages(JSON.parse(cachedChatStr));
+          } catch (_) {}
+        } else {
+          // Fallback to welcome message if nothing cached
+          const initialMsg: ChatMessage = {
+            id: 'welcome',
+            role: 'assistant',
+            content: `Hi! I am your AI research assistant for **"${activePaper.title}"**. Ask me anything about this paper, like explaining specific formulas, methodology details, or summarizing its contributions!`,
+            timestamp: new Date().toISOString()
+          };
+          setMessages([initialMsg]);
+        }
       } finally {
         setLoadingHistory(false);
       }
@@ -84,6 +100,14 @@ export default function AIChatBot({ activePaper }: AIChatBotProps) {
 
     fetchChatHistory();
   }, [activePaper]);
+
+  // Synchronize messages to local storage whenever they change
+  useEffect(() => {
+    const user = auth.currentUser;
+    if (user && activePaper && messages.length > 0) {
+      localStorage.setItem(`chat_${user.uid}_${activePaper.id}`, JSON.stringify(messages));
+    }
+  }, [messages, activePaper]);
 
   if (!activePaper) return null;
 
