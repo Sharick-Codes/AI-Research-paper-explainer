@@ -1,4 +1,4 @@
-import { getGeminiClient, generateContentWithFallback } from "./_gemini";
+import { callGemini } from "./_gemini";
 
 export const config = {
   maxDuration: 60,
@@ -69,12 +69,11 @@ export default async function handler(req: any, res: any) {
     const body: any = await getJsonBody(req);
     const { paperText, history, message, title } = body;
 
-    const customKey = (req.headers["x-gemini-api-key"] as string) || "";
-    const ai = getGeminiClient(customKey);
+    const apiKey = ((req.headers["x-gemini-api-key"] as string) || "").trim() || process.env.GEMINI_API_KEY;
 
-    if (!ai) {
+    if (!apiKey) {
       return sendJson(res, 500, {
-        error: "Gemini AI is not configured. Please add GEMINI_API_KEY in your Vercel Project Settings or under Settings > Gemini API Key in the app."
+        error: "Gemini API key is not configured. Please add GEMINI_API_KEY in Vercel Environment Variables or in the Settings panel."
       });
     }
 
@@ -84,26 +83,19 @@ export default async function handler(req: any, res: any) {
 
     const systemInstruction = `You are an expert interactive AI assistant for the research paper titled "${title || "Uploaded Research Paper"}". You must answer questions accurately using the provided research paper text. If the answer cannot be found or inferred from the paper, mention that, but do your best to explain general scientific concepts related to it if requested. Format your output nicely in Markdown. Here is the research paper content for reference:\n\n${paperText.slice(0, 40000)}`;
 
-    const chatHistory = (history || []).map((msg: any) => ({
+    const contents = (history || []).map((msg: any) => ({
       role: msg.role === "user" ? "user" : "model",
-      parts: [{ text: msg.content || msg.text }],
+      parts: [{ text: msg.content || msg.text || "" }],
     }));
 
-    // Add current user message
-    chatHistory.push({
+    contents.push({
       role: "user",
       parts: [{ text: message }],
     });
 
-    const response = await generateContentWithFallback(ai, {
-      contents: chatHistory,
-      config: {
-        systemInstruction,
-        temperature: 0.3,
-      },
-    });
+    const response = await callGemini(apiKey, contents, systemInstruction, 0.3);
 
-    return sendJson(res, 200, { response: response.text });
+    return sendJson(res, 200, { response });
   } catch (error: any) {
     console.error("Error in /api/chat:", error);
     return sendJson(res, 500, {

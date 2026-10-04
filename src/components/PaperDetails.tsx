@@ -106,39 +106,70 @@ export default function PaperDetails({ paper, onBack, onRefreshPapers }: PaperDe
 
     try {
       const userApiKey = localStorage.getItem('user_gemini_api_key') || '';
-      const res = await fetch('/api/explain', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(userApiKey ? { 'x-gemini-api-key': userApiKey } : {})
-        },
-        body: JSON.stringify({
-          paperText: localPaper.extractedText,
-          feature: activeTab,
-          title: localPaper.title
-        })
-      });
+      let explanationResult = '';
 
-      if (!res.ok) {
-        let errorMessage = 'Failed to analyze paper.';
-        const contentType = res.headers.get('content-type');
-        if (contentType && contentType.includes('application/json')) {
-          const errData = await res.json();
-          errorMessage = errData.error || errorMessage;
+      try {
+        const res = await fetch('/api/explain', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(userApiKey ? { 'x-gemini-api-key': userApiKey } : {})
+          },
+          body: JSON.stringify({
+            paperText: localPaper.extractedText,
+            feature: activeTab,
+            title: localPaper.title
+          })
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          explanationResult = data.result || '';
         } else {
-          const text = await res.text();
-          errorMessage = `Server Error (${res.status}): ${text.slice(0, 150)}`;
+          const contentType = res.headers.get('content-type');
+          let errText = '';
+          if (contentType && contentType.includes('application/json')) {
+            const errData = await res.json();
+            errText = errData.error || '';
+          } else {
+            errText = await res.text();
+          }
+          console.warn('Backend API error, attempting direct fallback if key available:', errText);
         }
-        throw new Error(errorMessage);
+      } catch (fetchErr: any) {
+        console.warn('Backend unreachable, attempting direct fallback:', fetchErr);
       }
 
-      const contentType = res.headers.get('content-type');
-      if (!contentType || !contentType.includes('application/json')) {
-        const text = await res.text();
-        throw new Error(`Invalid response format from server (${res.status}): ${text.slice(0, 150)}`);
+      // If backend failed but user has API key, execute direct client call to Gemini
+      if (!explanationResult && userApiKey) {
+        const fallbackRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent?key=${encodeURIComponent(userApiKey)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{
+              role: 'user',
+              parts: [{
+                text: `You are an AI research assistant. Provide an in-depth, well-formatted markdown analysis of the "${activeTab}" for the paper titled "${localPaper.title}".\n\nPaper Content:\n${localPaper.extractedText.slice(0, 40000)}`
+              }]
+            }],
+            generationConfig: { temperature: 0.2 }
+          })
+        });
+
+        if (fallbackRes.ok) {
+          const fallbackData = await fallbackRes.json();
+          explanationResult = fallbackData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        } else {
+          const errData = await fallbackRes.json();
+          throw new Error(errData?.error?.message || 'Direct Gemini API call failed.');
+        }
       }
 
-      const data = await res.json();
+      if (!explanationResult) {
+        throw new Error('Failed to generate analysis. Please ensure your GEMINI_API_KEY is configured in Settings or Vercel.');
+      }
+
+      const data = { result: explanationResult };
       
       // Update local state and Firestore
       const updatedPaper = { ...localPaper, [activeField]: data.result };

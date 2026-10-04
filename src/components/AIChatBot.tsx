@@ -153,40 +153,63 @@ export default function AIChatBot({ activePaper }: AIChatBotProps) {
       }));
 
       const userApiKey = localStorage.getItem('user_gemini_api_key') || '';
-      const res = await fetch('/api/chat', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(userApiKey ? { 'x-gemini-api-key': userApiKey } : {})
-        },
-        body: JSON.stringify({
-          paperText: activePaper.extractedText,
-          history: chatHistoryForAPI,
-          message: textToSend,
-          title: activePaper.title
-        })
-      });
+      let assistantResponse = '';
 
-      if (!res.ok) {
-        let errorMessage = 'Server returned an error.';
-        const contentType = res.headers.get('content-type');
-        if (contentType && contentType.includes('application/json')) {
-          const errData = await res.json();
-          errorMessage = errData.error || errorMessage;
+      try {
+        const res = await fetch('/api/chat', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            ...(userApiKey ? { 'x-gemini-api-key': userApiKey } : {})
+          },
+          body: JSON.stringify({
+            paperText: activePaper.extractedText,
+            history: chatHistoryForAPI,
+            message: textToSend,
+            title: activePaper.title
+          })
+        });
+
+        if (res.ok) {
+          const data = await res.json();
+          assistantResponse = data.response || '';
         } else {
-          const text = await res.text();
-          errorMessage = `Server Error (${res.status}): ${text.slice(0, 150)}`;
+          console.warn('Backend /api/chat error, trying direct fallback if key available.');
         }
-        throw new Error(errorMessage);
+      } catch (fetchErr) {
+        console.warn('Backend /api/chat unreachable, trying direct fallback:', fetchErr);
       }
 
-      const contentType = res.headers.get('content-type');
-      if (!contentType || !contentType.includes('application/json')) {
-        const text = await res.text();
-        throw new Error(`Invalid response format from server (${res.status}): ${text.slice(0, 150)}`);
+      // If backend failed and user key is available, execute direct Gemini call
+      if (!assistantResponse && userApiKey) {
+        const contents = chatHistoryForAPI.map(m => ({
+          role: m.role,
+          parts: [{ text: m.content }]
+        }));
+
+        const directRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-flash-lite-latest:generateContent?key=${encodeURIComponent(userApiKey)}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            system_instruction: {
+              parts: [{ text: `You are an expert AI research assistant for the paper titled "${activePaper.title}". Answer the user using markdown based on the paper content:\n\n${activePaper.extractedText.slice(0, 40000)}` }]
+            },
+            contents,
+            generationConfig: { temperature: 0.3 }
+          })
+        });
+
+        if (directRes.ok) {
+          const directData = await directRes.json();
+          assistantResponse = directData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+        }
       }
 
-      const data = await res.json();
+      if (!assistantResponse) {
+        throw new Error('Failed to get answer. Please check your GEMINI_API_KEY in Settings or Vercel.');
+      }
+
+      const data = { response: assistantResponse };
       
       const assistantMsgId = 'msg_' + Math.random().toString(36).substring(2, 11);
       const assistantMsg: ChatMessage = {

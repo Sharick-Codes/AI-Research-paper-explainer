@@ -1,4 +1,4 @@
-import { getGeminiClient, promptTemplates, generateContentWithFallback } from "./_gemini";
+import { callGemini, promptTemplates } from "./_gemini";
 
 export const config = {
   maxDuration: 60,
@@ -69,12 +69,11 @@ export default async function handler(req: any, res: any) {
     const body: any = await getJsonBody(req);
     const { paperText, feature, title } = body;
 
-    const customKey = (req.headers["x-gemini-api-key"] as string) || "";
-    const ai = getGeminiClient(customKey);
+    const apiKey = ((req.headers["x-gemini-api-key"] as string) || "").trim() || process.env.GEMINI_API_KEY;
 
-    if (!ai) {
+    if (!apiKey) {
       return sendJson(res, 500, {
-        error: "Gemini AI is not configured. Please add GEMINI_API_KEY in your Vercel Project Settings or under Settings > Gemini API Key in the app."
+        error: "Gemini API key is not configured. Please add GEMINI_API_KEY in Vercel Environment Variables or in the Settings panel."
       });
     }
 
@@ -90,15 +89,14 @@ export default async function handler(req: any, res: any) {
     const systemInstruction = `You are an expert AI research assistant. Your task is to explain and analyze the research paper titled "${title || "Uploaded Research Paper"}". Refer directly to the provided paper text to formulate your response. Be clear, professional, and educational. Format your response beautifully using Markdown.`;
     const userPrompt = `${promptTemplate}\n\nHere is the paper text:\n\n${paperText.slice(0, 40000)}`;
 
-    const response = await generateContentWithFallback(ai, {
-      contents: userPrompt,
-      config: {
-        systemInstruction,
-        temperature: 0.2,
-      },
-    });
+    const result = await callGemini(
+      apiKey,
+      [{ role: "user", parts: [{ text: userPrompt }] }],
+      systemInstruction,
+      0.2
+    );
 
-    return sendJson(res, 200, { result: response.text });
+    return sendJson(res, 200, { result });
   } catch (error: any) {
     console.error("Error in /api/explain:", error);
     return sendJson(res, 500, {
