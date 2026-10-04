@@ -6,13 +6,16 @@
 const MONITOR_URL = 'https://gtae-atra-security.onrender.com';
 const SITE_ID = 'ai-research-paper-explainer';
 
+// 🛑 CRITICAL: Save unpatched raw fetch so telemetry/checks never intercept themselves!
+const rawFetch = (typeof window !== 'undefined' ? window.fetch.bind(window) : fetch);
+
 let cachedIP = '';
 
 // 1. Visitor-oda Real Public IP-ai identify pannudhu
 async function getPublicIP(): Promise<string> {
   if (cachedIP) return cachedIP;
   try {
-    const res = await fetch('https://api.ipify.org?format=json');
+    const res = await rawFetch('https://api.ipify.org?format=json');
     const data = await res.json();
     cachedIP = data.ip;
     return cachedIP;
@@ -24,7 +27,7 @@ async function getPublicIP(): Promise<string> {
 // 2. Blocklist Check: IP already ban aagi irukka nu check pannudhu
 async function checkBlockStatus(ip: string) {
   try {
-    const res = await fetch(`${MONITOR_URL}/api/blocklist/check?ip=${encodeURIComponent(ip)}`);
+    const res = await rawFetch(`${MONITOR_URL}/api/blocklist/check?ip=${encodeURIComponent(ip)}`);
     const data = await res.json();
     if (data.blocked) {
       document.body.innerHTML = `
@@ -46,7 +49,7 @@ async function checkBlockStatus(ip: string) {
 async function sendTelemetry(record: any) {
   const ip = await getPublicIP();
   try {
-    await fetch(`${MONITOR_URL}/telemetry`, {
+    await rawFetch(`${MONITOR_URL}/telemetry`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -84,12 +87,23 @@ async function initSecurity() {
 if (typeof window !== 'undefined') {
   initSecurity();
 
-  // Intercept any API requests
+  // Intercept any outgoing API requests (e.g. Gemini calls, backend APIs)
   const originalFetch = window.fetch;
   window.fetch = async (...args) => {
-    const start = Date.now();
     const [resource, config] = args;
     const urlStr = typeof resource === 'string' ? resource : (resource as Request).url;
+
+    // 🛑 BYPASS CHECK: Do NOT intercept telemetry, blocklist checks, or IP lookups!
+    if (
+      urlStr.includes('onrender.com') ||
+      urlStr.includes('ipify.org') ||
+      urlStr.includes('/telemetry') ||
+      urlStr.includes('/api/blocklist')
+    ) {
+      return originalFetch(...args);
+    }
+
+    const start = Date.now();
     const method = config?.method || 'GET';
 
     try {
