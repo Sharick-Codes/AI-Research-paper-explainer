@@ -3,13 +3,17 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import { GoogleGenAI } from "@google/genai";
 import dotenv from "dotenv";
+import { securityMonitor } from "./middleware/securityMonitor";
 
 dotenv.config();
 
 const app = express();
-const PORT = 3000;
+const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 4000;
 
 app.use(express.json({ limit: "50mb" }));
+
+// 🛡️ GTAE-ATRA AI Security Monitoring & Real-time Mitigation
+app.use(securityMonitor());
 
 // Initialize Gemini client safely
 let ai: GoogleGenAI | null = null;
