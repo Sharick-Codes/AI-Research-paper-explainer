@@ -105,9 +105,13 @@ export default function PaperDetails({ paper, onBack, onRefreshPapers }: PaperDe
     if (!user) return;
 
     try {
+      const userApiKey = localStorage.getItem('user_gemini_api_key') || '';
       const res = await fetch('/api/explain', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          ...(userApiKey ? { 'x-gemini-api-key': userApiKey } : {})
+        },
         body: JSON.stringify({
           paperText: localPaper.extractedText,
           feature: activeTab,

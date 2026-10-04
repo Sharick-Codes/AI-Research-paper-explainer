@@ -31,8 +31,8 @@ import {
   LogOut,
   Bell,
   Globe,
-  Languages,
-  CheckCircle2
+  CheckCircle2,
+  Key
 } from 'lucide-react';
 
 // Custom subcomponents
@@ -63,6 +63,10 @@ export default function App() {
   // Loading status
   const [loadingAuth, setLoadingAuth] = useState<boolean>(true);
   const [loadingData, setLoadingData] = useState<boolean>(false);
+
+  // Gemini API Key config
+  const [geminiApiKey, setGeminiApiKey] = useState<string>(() => localStorage.getItem('user_gemini_api_key') || '');
+  const [apiKeySaved, setApiKeySaved] = useState<boolean>(false);
 
   // Sync dark mode class on HTML document element
   useEffect(() => {
@@ -563,6 +567,72 @@ export default function App() {
                 >
                   {userProfile?.notificationsEnabled ? 'Enabled' : 'Disabled'}
                 </button>
+              </div>
+
+              {/* Gemini AI API Key / Secrets */}
+              <div className="p-6 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <Key className="h-4 w-4 text-indigo-500" />
+                      <h4 className="font-bold text-sm text-slate-900 dark:text-white">Gemini API Key (Secrets)</h4>
+                    </div>
+                    <p className="text-xs text-slate-400">
+                      Configure your Gemini API key to avoid daily limits or when running without server-side environment variables.
+                    </p>
+                  </div>
+                  {geminiApiKey && (
+                    <span className="text-[10px] font-semibold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/20">
+                      Active
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex gap-2">
+                  <input
+                    type="password"
+                    placeholder="Enter your Gemini API Key (AIzaSy...)"
+                    value={geminiApiKey}
+                    onChange={(e) => setGeminiApiKey(e.target.value)}
+                    className="flex-1 px-3.5 py-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-900 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/40"
+                  />
+                  <button
+                    onClick={() => {
+                      if (geminiApiKey.trim()) {
+                        localStorage.setItem('user_gemini_api_key', geminiApiKey.trim());
+                      } else {
+                        localStorage.removeItem('user_gemini_api_key');
+                      }
+                      setApiKeySaved(true);
+                      setTimeout(() => setApiKeySaved(false), 2500);
+                    }}
+                    className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold transition-all cursor-pointer shadow-sm"
+                  >
+                    {apiKeySaved ? 'Saved! ✓' : 'Save Key'}
+                  </button>
+                  {geminiApiKey && (
+                    <button
+                      onClick={() => {
+                        setGeminiApiKey('');
+                        localStorage.removeItem('user_gemini_api_key');
+                      }}
+                      className="px-3 py-2.5 bg-slate-100 hover:bg-rose-50 text-slate-500 hover:text-rose-600 dark:bg-slate-900 dark:hover:bg-rose-950/30 rounded-xl text-xs font-semibold transition-all cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-400">
+                  Don't have an API key? Get one for free at{" "}
+                  <a
+                    href="https://aistudio.google.com/app/apikey"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-indigo-500 hover:underline font-medium"
+                  >
+                    Google AI Studio ↗
+                  </a>
+                </p>
               </div>
             </div>
           </div>

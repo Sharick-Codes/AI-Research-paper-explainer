@@ -40,10 +40,11 @@ async function generateContentWithFallback(ai: GoogleGenAI, params: {
   config?: any;
 }) {
   const models = [
-    "gemini-3.5-flash",
     "gemini-2.5-flash",
-    "gemini-3.1-flash-lite",
-    "gemini-2.5-flash-lite"
+    "gemini-2.0-flash",
+    "gemini-1.5-flash",
+    "gemini-2.0-flash-lite",
+    "gemini-1.5-pro"
   ];
   let lastError: any = null;
 
@@ -122,12 +123,33 @@ const promptTemplates: Record<string, string> = {
   notes: "Generate detailed study notes, categorized bullet points, and formulas of this paper for easy memorization and review."
 };
 
+// Helper to get Gemini client either from header or server env
+function getAIClient(req: express.Request): GoogleGenAI | null {
+  const customKey = req.headers["x-gemini-api-key"] as string;
+  if (customKey && customKey.trim().length > 0) {
+    try {
+      return new GoogleGenAI({
+        apiKey: customKey.trim(),
+        httpOptions: {
+          headers: {
+            "User-Agent": "aistudio-build",
+          },
+        },
+      });
+    } catch {
+      return ai;
+    }
+  }
+  return ai;
+}
+
 // API: Explain Research Paper Feature
 app.post("/api/explain", async (req, res) => {
   const { paperText, feature, title } = req.body;
+  const client = getAIClient(req);
 
-  if (!ai) {
-    return res.status(500).json({ error: "Gemini AI client is not configured. Please set GEMINI_API_KEY." });
+  if (!client) {
+    return res.status(500).json({ error: "Gemini AI client is not configured. Please set GEMINI_API_KEY in environment or in the Settings panel." });
   }
 
   if (!paperText || !feature) {
@@ -144,7 +166,7 @@ app.post("/api/explain", async (req, res) => {
     
     const userPrompt = `${promptTemplate}\n\nHere is the paper text:\n\n${paperText.slice(0, 100000)}`; // Slice text to stay within comfortable limits
 
-    const response = await generateContentWithFallback(ai, {
+    const response = await generateContentWithFallback(client, {
       contents: userPrompt,
       config: {
         systemInstruction: systemInstruction,
@@ -162,9 +184,10 @@ app.post("/api/explain", async (req, res) => {
 // API: AI Chat Assistant
 app.post("/api/chat", async (req, res) => {
   const { paperText, history, message, title } = req.body;
+  const client = getAIClient(req);
 
-  if (!ai) {
-    return res.status(500).json({ error: "Gemini AI client is not configured. Please set GEMINI_API_KEY." });
+  if (!client) {
+    return res.status(500).json({ error: "Gemini AI client is not configured. Please set GEMINI_API_KEY in environment or in the Settings panel." });
   }
 
   if (!paperText || !message) {
@@ -185,7 +208,7 @@ app.post("/api/chat", async (req, res) => {
       parts: [{ text: message }]
     });
 
-    const response = await generateContentWithFallback(ai, {
+    const response = await generateContentWithFallback(client, {
       contents: chatHistory,
       config: {
         systemInstruction: systemInstruction,

@@ -152,10 +152,12 @@ export default function AIChatBot({ activePaper }: AIChatBotProps) {
         content: msg.content
       }));
 
+      const userApiKey = localStorage.getItem('user_gemini_api_key') || '';
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          ...(userApiKey ? { 'x-gemini-api-key': userApiKey } : {})
         },
         body: JSON.stringify({
           paperText: activePaper.extractedText,
