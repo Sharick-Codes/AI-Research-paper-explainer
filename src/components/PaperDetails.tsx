@@ -16,7 +16,9 @@ import {
   ChevronRight,
   Maximize2,
   AlertCircle,
-  Award
+  Award,
+  Settings,
+  Key
 } from 'lucide-react';
 import MarkdownRenderer from './MarkdownRenderer';
 import { db, auth } from '../firebase';
@@ -27,6 +29,7 @@ interface PaperDetailsProps {
   paper: Paper;
   onBack: () => void;
   onRefreshPapers: () => Promise<void>;
+  onOpenSettings?: () => void;
 }
 
 interface TabGroup {
@@ -34,7 +37,7 @@ interface TabGroup {
   tabs: { id: string; label: string; field: keyof Paper }[];
 }
 
-export default function PaperDetails({ paper, onBack, onRefreshPapers }: PaperDetailsProps) {
+export default function PaperDetails({ paper, onBack, onRefreshPapers, onOpenSettings }: PaperDetailsProps) {
   const [activeTab, setActiveTab] = useState<string>('summary');
   const [copiedFormat, setCopiedFormat] = useState<string | null>(null);
   const [loadingAI, setLoadingAI] = useState<boolean>(false);
@@ -361,6 +364,17 @@ export default function PaperDetails({ paper, onBack, onRefreshPapers }: PaperDe
               </button>
             </div>
           </div>
+
+          {onOpenSettings && (
+            <button
+              onClick={onOpenSettings}
+              className="px-3.5 py-2.5 bg-white hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 rounded-xl font-medium text-sm transition-all flex items-center space-x-1.5 cursor-pointer text-slate-700 dark:text-slate-300 shadow-sm"
+              title="Configure Gemini API Key and Preferences"
+            >
+              <Settings className="h-4.5 w-4.5 text-indigo-500" />
+              <span>Settings</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -502,17 +516,26 @@ export default function PaperDetails({ paper, onBack, onRefreshPapers }: PaperDe
             ) : null}
 
             {apiError && (
-              <div className="mb-6 p-4 bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/50 rounded-2xl flex items-start space-x-3 text-rose-800 dark:text-rose-400">
-                <AlertCircle className="h-5 w-5 mt-0.5 flex-shrink-0 text-rose-600 dark:text-rose-500" />
-                <div className="text-sm space-y-1">
-                  <span className="font-bold">AI Generation Error:</span>
-                  <p className="leading-relaxed text-xs opacity-90">{apiError}</p>
-                  {apiError.toLowerCase().includes("quota") && (
+              <div className="mb-6 p-4 bg-rose-50 dark:bg-rose-950/20 border border-rose-200 dark:border-rose-900/50 rounded-2xl flex items-start justify-between text-rose-800 dark:text-rose-400 gap-3">
+                <div className="flex items-start space-x-3">
+                  <AlertCircle className="h-5 w-5 mt-0.5 flex-shrink-0 text-rose-600 dark:text-rose-500" />
+                  <div className="text-sm space-y-1">
+                    <span className="font-bold">AI Generation Error:</span>
+                    <p className="leading-relaxed text-xs opacity-90">{apiError}</p>
                     <p className="text-xs font-semibold mt-1.5 text-indigo-600 dark:text-indigo-400">
-                      💡 Daily free-tier limit reached (20 requests/day). You can configure your own paid Gemini API Key in the <span className="font-bold">Settings &gt; Secrets</span> panel to bypass limits.
+                      💡 Click Settings to enter your Gemini API Key to bypass limits and connect directly.
                     </p>
-                  )}
+                  </div>
                 </div>
+                {onOpenSettings && (
+                  <button
+                    onClick={onOpenSettings}
+                    className="px-3 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-semibold cursor-pointer flex-shrink-0 shadow-sm flex items-center space-x-1.5"
+                  >
+                    <Settings className="h-3.5 w-3.5" />
+                    <span>Open Settings</span>
+                  </button>
+                )}
               </div>
             )}
 

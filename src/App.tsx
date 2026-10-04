@@ -279,6 +279,10 @@ export default function App() {
           paper={activePaper}
           onBack={() => setActivePaper(null)}
           onRefreshPapers={handleRefreshPapers}
+          onOpenSettings={() => {
+            setActivePaper(null);
+            setTab('settings');
+          }}
         />
       );
     }
