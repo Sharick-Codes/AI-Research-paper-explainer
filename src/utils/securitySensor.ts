@@ -87,18 +87,34 @@ async function initSecurity() {
 if (typeof window !== 'undefined') {
   initSecurity();
 
-  // Intercept any outgoing API requests (e.g. Gemini calls, backend APIs)
+  // Intercept outgoing API requests targeting this application
   const originalFetch = window.fetch;
   window.fetch = async (...args) => {
     const [resource, config] = args;
     const urlStr = typeof resource === 'string' ? resource : (resource as Request).url;
 
-    // 🛑 BYPASS CHECK: Do NOT intercept telemetry, blocklist checks, or IP lookups!
+    // 🛑 CRITICAL FILTER: ONLY monitor requests belonging to our own app domain!
+    // External APIs (Firestore, Firebase, Google APIs, ipify, render monitor) must NEVER be monitored!
+    let path = urlStr;
+    try {
+      if (urlStr.startsWith('http://') || urlStr.startsWith('https://')) {
+        const parsed = new URL(urlStr);
+        if (parsed.origin !== window.location.origin) {
+          // External third-party call (Firestore channel, Gemini API, etc.) -> pass through directly
+          return originalFetch(...args);
+        }
+        path = parsed.pathname;
+      }
+    } catch {
+      // not a full url
+    }
+
+    // Bypass internal telemetry and blocklist checks
     if (
-      urlStr.includes('onrender.com') ||
-      urlStr.includes('ipify.org') ||
-      urlStr.includes('/telemetry') ||
-      urlStr.includes('/api/blocklist')
+      path.includes('/telemetry') ||
+      path.includes('/api/blocklist') ||
+      path.includes('onrender.com') ||
+      path.includes('ipify.org')
     ) {
       return originalFetch(...args);
     }
@@ -110,11 +126,11 @@ if (typeof window !== 'undefined') {
       const response = await originalFetch(...args);
       sendTelemetry({
         method: method.toUpperCase(),
-        path: urlStr,
-        endpoint: urlStr,
+        path: path,
+        endpoint: path,
         status: response.status,
         status_code: response.status,
-        response_time_ms: Date.now() - start,
+        response_time_ms: Math.min(Date.now() - start, 3000), // Cap response time
         request_size: typeof config?.body === 'string' ? config.body.length : 150,
         response_size: 1200,
         user_agent: navigator.userAgent,
