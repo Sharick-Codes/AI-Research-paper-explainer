@@ -1,6 +1,8 @@
 /**
  * GTAE-ATRA Real-Time Cloud Security Sensor for Vercel Web Apps
+ *
  * Monitors live visitors, catches attacks, and enforces cloud IP blocking.
+ * Conservative design: avoids false positives from normal AI chat usage.
  */
 
 const MONITOR_URL = 'https://gtae-atra-security.onrender.com';
@@ -11,7 +13,14 @@ const rawFetch = (typeof window !== 'undefined' ? window.fetch.bind(window) : fe
 
 let cachedIP = '';
 
-// 1. Visitor-oda Real Public IP-ai identify pannudhu
+// Debounce: minimum ms between consecutive telemetry sends (avoid burst false positives)
+const TELEMETRY_DEBOUNCE_MS = 2000;
+let lastTelemetrySent = 0;
+// Queue multiple events if they arrive in the debounce window
+const pendingRecords: any[] = [];
+let debounceTimer: ReturnType<typeof setTimeout> | null = null;
+
+// 1. Visitor's real public IP
 async function getPublicIP(): Promise<string> {
   if (cachedIP) return cachedIP;
   try {
@@ -24,7 +33,7 @@ async function getPublicIP(): Promise<string> {
   }
 }
 
-// 2. Blocklist Check: IP already ban aagi irukka nu check pannudhu
+// 2. Blocklist Check
 async function checkBlockStatus(ip: string) {
   try {
     const res = await rawFetch(`${MONITOR_URL}/api/blocklist/check?ip=${encodeURIComponent(ip)}`);
@@ -41,13 +50,15 @@ async function checkBlockStatus(ip: string) {
       `;
     }
   } catch (e) {
-    // Fail-open
+    // Fail-open: if blocklist check fails, allow the user through
   }
 }
 
-// 3. Cloud IDS-kku live telemetry anuppudhu
-async function sendTelemetry(record: any) {
+// 3. Flush pending records to IDS (batched to avoid spamming)
+async function flushTelemetry() {
+  if (pendingRecords.length === 0) return;
   const ip = await getPublicIP();
+  const batch = pendingRecords.splice(0, pendingRecords.length);
   try {
     await rawFetch(`${MONITOR_URL}/telemetry`, {
       method: 'POST',
@@ -55,15 +66,42 @@ async function sendTelemetry(record: any) {
       body: JSON.stringify({
         source_ip: ip,
         site_id: SITE_ID,
-        requests: [record]
+        requests: batch
       })
     });
   } catch (e) {
     // Fail-silent
   }
+  lastTelemetrySent = Date.now();
 }
 
-// 4. Initial Page Visit capture
+// Queue telemetry with debounce to batch bursts from streaming/multi-request flows
+function sendTelemetry(record: any) {
+  pendingRecords.push(record);
+
+  if (debounceTimer) clearTimeout(debounceTimer);
+
+  const timeSinceLast = Date.now() - lastTelemetrySent;
+  const delay = timeSinceLast >= TELEMETRY_DEBOUNCE_MS ? 200 : TELEMETRY_DEBOUNCE_MS;
+
+  debounceTimer = setTimeout(() => {
+    debounceTimer = null;
+    flushTelemetry();
+  }, delay);
+}
+
+// Paths that must never be reported as monitored traffic
+const BYPASS_PATHS = [
+  '/telemetry',
+  '/api/blocklist',
+  '/api/security',
+  'onrender.com',
+  'ipify.org',
+  'firestore',
+  'googleapis.com',
+];
+
+// 4. Initial page visit capture
 async function initSecurity() {
   const ip = await getPublicIP();
   await checkBlockStatus(ip);
@@ -87,55 +125,60 @@ async function initSecurity() {
 if (typeof window !== 'undefined') {
   initSecurity();
 
-  // Intercept outgoing API requests targeting this application
+  // Intercept outgoing API requests targeting this application only
   const originalFetch = window.fetch;
   window.fetch = async (...args) => {
     const [resource, config] = args;
     const urlStr = typeof resource === 'string' ? resource : (resource as Request).url;
 
     // 🛑 CRITICAL FILTER: ONLY monitor requests belonging to our own app domain!
-    // External APIs (Firestore, Firebase, Google APIs, ipify, render monitor) must NEVER be monitored!
     let path = urlStr;
     try {
       if (urlStr.startsWith('http://') || urlStr.startsWith('https://')) {
         const parsed = new URL(urlStr);
         if (parsed.origin !== window.location.origin) {
-          // External third-party call (Firestore channel, Gemini API, etc.) -> pass through directly
+          // External third-party call (Firestore, Gemini API, etc.) -> pass through
           return originalFetch(...args);
         }
         path = parsed.pathname;
       }
     } catch {
-      // not a full url
+      // not a full URL
     }
 
-    // Bypass internal telemetry and blocklist checks
-    if (
-      path.includes('/telemetry') ||
-      path.includes('/api/blocklist') ||
-      path.includes('onrender.com') ||
-      path.includes('ipify.org')
-    ) {
+    // Bypass internal sensor paths
+    if (BYPASS_PATHS.some(p => path.includes(p))) {
+      return originalFetch(...args);
+    }
+
+    // Skip static assets to avoid burst false alarms from parallel asset loading
+    if (/\.(js|css|svg|png|jpg|jpeg|gif|ico|woff2?|map|json)$/i.test(path)) {
       return originalFetch(...args);
     }
 
     const start = Date.now();
-    const method = config?.method || 'GET';
+    const method = (config?.method || 'GET').toUpperCase();
 
     try {
       const response = await originalFetch(...args);
+
       sendTelemetry({
-        method: method.toUpperCase(),
-        path: path,
+        method,
+        path,
         endpoint: path,
         status: response.status,
         status_code: response.status,
-        response_time_ms: Math.min(Date.now() - start, 3000), // Cap response time
-        request_size: typeof config?.body === 'string' ? config.body.length : 150,
+        // Cap response time at 30s to prevent massive outlier values from skewing the ML model
+        response_time_ms: Math.min(Date.now() - start, 30_000),
+        // Use content-length or estimate from body; cap at 1MB to avoid skewing size features
+        request_size: typeof config?.body === 'string'
+          ? Math.min(config.body.length, 1_000_000)
+          : 150,
         response_size: 1200,
         user_agent: navigator.userAgent,
         timestamp_ms: Date.now()
       });
+
       return response;
     } catch (err) {
       throw err;
