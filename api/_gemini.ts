@@ -3,13 +3,14 @@ import dotenv from "dotenv";
 
 dotenv.config();
 
-// Default models fallback order with official verified Gemini model IDs
+// Verified fastest and highest-availability Gemini models
 export const GEMINI_MODELS = [
+  "gemini-flash-lite-latest",
+  "gemini-2.5-flash-lite",
+  "gemini-flash-latest",
   "gemini-2.5-flash",
-  "gemini-2.0-flash",
-  "gemini-1.5-flash",
-  "gemini-2.0-flash-lite",
-  "gemini-1.5-pro",
+  "gemini-3.8-flash",
+  "gemini-3.5-flash"
 ];
 
 export function getGeminiClient(customApiKey?: string): GoogleGenAI | null {
@@ -46,47 +47,33 @@ export async function generateContentWithFallback(
   let lastError: any = null;
 
   for (const model of GEMINI_MODELS) {
-    let retries = 1;
-    while (retries >= 0) {
-      try {
-        console.log(`[Gemini] Attempting generateContent with model: ${model} (retries left: ${retries})`);
-        const response = await ai.models.generateContent({
-          ...params,
-          model: model,
-        });
-        return response;
-      } catch (err: any) {
-        lastError = err;
-        const errorString = String(err?.message || "").toLowerCase();
-        console.error(`[Gemini] Error with model ${model}:`, err?.message || err);
+    try {
+      console.log(`[Gemini] Attempting generateContent with model: ${model}`);
+      const response = await ai.models.generateContent({
+        ...params,
+        model: model,
+      });
+      return response;
+    } catch (err: any) {
+      lastError = err;
+      const errorString = String(err?.message || "").toLowerCase();
+      console.error(`[Gemini] Model ${model} failed:`, err?.message || err);
 
-        const isQuotaExceeded =
-          err?.status === 429 ||
-          errorString.includes("429") ||
-          errorString.includes("quota") ||
-          errorString.includes("rate limit") ||
-          errorString.includes("exhausted");
+      // On 503 high demand, 429 quota, or 404 not found, immediately switch to next model without delay
+      const shouldSwitchImmediately =
+        err?.status === 429 ||
+        err?.status === 503 ||
+        err?.status === 404 ||
+        errorString.includes("429") ||
+        errorString.includes("503") ||
+        errorString.includes("demand") ||
+        errorString.includes("quota") ||
+        errorString.includes("rate limit") ||
+        errorString.includes("not found");
 
-        // Immediately switch model if quota exceeded or model not found
-        if (isQuotaExceeded || err?.status === 404 || errorString.includes("not found")) {
-          console.warn(`[Gemini] Model ${model} unavailable (quota/404). Falling back to next model...`);
-          break;
-        }
-
-        const isTransient =
-          err?.status === 503 ||
-          errorString.includes("503") ||
-          errorString.includes("temporary") ||
-          errorString.includes("high demand") ||
-          errorString.includes("unavailable");
-
-        if (isTransient && retries > 0) {
-          const delay = (2 - retries) * 1200;
-          await new Promise((resolve) => setTimeout(resolve, delay));
-          retries--;
-        } else {
-          break;
-        }
+      if (shouldSwitchImmediately) {
+        console.warn(`[Gemini] Model ${model} unavailable. Instantly falling back to next model...`);
+        continue;
       }
     }
   }

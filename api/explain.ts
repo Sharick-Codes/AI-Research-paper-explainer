@@ -1,14 +1,34 @@
 import { getGeminiClient, promptTemplates, generateContentWithFallback } from "./_gemini";
 
-async function getJsonBody(req: any) {
-  if (req.body && typeof req.body === "object") return req.body;
-  if (req.body && typeof req.body === "string") {
-    try {
-      return JSON.parse(req.body);
-    } catch {
-      return {};
+export const config = {
+  maxDuration: 60,
+};
+
+function sendJson(res: any, statusCode: number, data: any) {
+  if (typeof res.status === "function" && typeof res.json === "function") {
+    return res.status(statusCode).json(data);
+  }
+  res.statusCode = statusCode;
+  res.setHeader("Content-Type", "application/json");
+  res.end(JSON.stringify(data));
+}
+
+async function getJsonBody(req: any): Promise<any> {
+  if (req.body) {
+    if (typeof req.body === "object") return req.body;
+    if (typeof req.body === "string") {
+      try {
+        return JSON.parse(req.body);
+      } catch {
+        return {};
+      }
     }
   }
+
+  if (req.readableEnded || req.complete) {
+    return {};
+  }
+
   return new Promise((resolve) => {
     let body = "";
     req.on("data", (chunk: any) => {
@@ -21,11 +41,12 @@ async function getJsonBody(req: any) {
         resolve({});
       }
     });
+    req.on("error", () => resolve({}));
+    setTimeout(() => resolve({}), 600);
   });
 }
 
 export default async function handler(req: any, res: any) {
-  // Support CORS
   res.setHeader("Access-Control-Allow-Credentials", "true");
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET,OPTIONS,PATCH,DELETE,POST,PUT");
@@ -35,12 +56,13 @@ export default async function handler(req: any, res: any) {
   );
 
   if (req.method === "OPTIONS") {
-    res.status(200).end();
+    res.statusCode = 200;
+    res.end();
     return;
   }
 
   if (req.method !== "POST") {
-    return res.status(405).json({ error: "Method not allowed. Use POST." });
+    return sendJson(res, 405, { error: "Method not allowed. Use POST." });
   }
 
   try {
@@ -51,22 +73,22 @@ export default async function handler(req: any, res: any) {
     const ai = getGeminiClient(customKey);
 
     if (!ai) {
-      return res.status(500).json({
+      return sendJson(res, 500, {
         error: "Gemini AI is not configured. Please add GEMINI_API_KEY in your Vercel Project Settings or under Settings > Gemini API Key in the app."
       });
     }
 
     if (!paperText || !feature) {
-      return res.status(400).json({ error: "Missing paperText or feature parameter." });
+      return sendJson(res, 400, { error: "Missing paperText or feature parameter." });
     }
 
     const promptTemplate = promptTemplates[feature];
     if (!promptTemplate) {
-      return res.status(400).json({ error: `Invalid feature type requested: ${feature}` });
+      return sendJson(res, 400, { error: `Invalid feature type requested: ${feature}` });
     }
 
     const systemInstruction = `You are an expert AI research assistant. Your task is to explain and analyze the research paper titled "${title || "Uploaded Research Paper"}". Refer directly to the provided paper text to formulate your response. Be clear, professional, and educational. Format your response beautifully using Markdown.`;
-    const userPrompt = `${promptTemplate}\n\nHere is the paper text:\n\n${paperText.slice(0, 100000)}`;
+    const userPrompt = `${promptTemplate}\n\nHere is the paper text:\n\n${paperText.slice(0, 40000)}`;
 
     const response = await generateContentWithFallback(ai, {
       contents: userPrompt,
@@ -76,10 +98,10 @@ export default async function handler(req: any, res: any) {
       },
     });
 
-    return res.status(200).json({ result: response.text });
+    return sendJson(res, 200, { result: response.text });
   } catch (error: any) {
     console.error("Error in /api/explain:", error);
-    return res.status(500).json({
+    return sendJson(res, 500, {
       error: error?.message || "Failed to generate explanation from Gemini API."
     });
   }
